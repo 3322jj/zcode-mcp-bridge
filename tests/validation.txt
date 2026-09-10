@@ -1,0 +1,227 @@
+
+[1] 握手 / instructions / annotations / schema
+  ✓ initialize 返回 instructions 且含核心规则
+  ✓ instructions 前 512 字符包含关键规则
+  ✓ 9 个工具（原七个 + 审计两个）
+  ✓ start schema 无 anyOf
+  ✓ 四个只读工具带 readOnlyHint
+  ✓ start 为写入型 open-world
+  ✓ stop 带 destructiveHint
+  ✓ doctor 通过（假配置）
+
+[2] 正常返回 + 结果落盘
+  ✓ start 秒回 queued
+  ✓ 终态 returned
+  ✓ response 为 fake-ok
+  ✓ session_id 为 sess_A
+  ✓ state.session_id 正确
+  ✓ result.json 存在且结构化
+  ✓ brief.md 已写
+  ✓ zcode_result 全文一致
+
+[3] 延迟与停止（stop_requested 可见，终态 stopped）
+  ✓ 等待中 still_running=true
+  ✓ stop 返回 stop_requested
+  ✓ 终态 stopped
+  ✓ exit_code=130
+
+[4] 整轮超时（timed_out / 124）
+  ✓ 终态 timed_out
+  ✓ exit_code=124
+
+[5] spawn 失败（CLI 路径不存在：start 快速失败 + worker 自验兜底）
+  ✓ doctor 报 cli_is_file=false
+  ✓ start 快速失败并提及 CLI
+
+[6] 非 JSON 输出（包成 response）
+  ✓ returned 且原文保留
+
+[7] 巨大输出（payload 截断、日志完整）
+  ✓ returned
+  ✓ result.response 已截断
+  ✓ stdout.log 保留完整原文
+
+[8] 密钥出现在 stderr（全链路脱敏）
+  ✓ 终态 failed（exit 3）
+  ✓ stderr.log 不含密钥且已替换
+  ✓ result.json 不含密钥
+  ✓ stdout.log 不含密钥
+
+[9] sessionId 不一致（保留旧会话，新值只进报告）
+  ✓ followup 接受
+  ✓ 续聊终态 failed
+  ✓ exit_code=2（会话不一致）
+  ✓ 不一致提示
+  ✓ state 保留旧会话 sess_A
+  ✓ 新 sessionId 只进报告
+
+[10] 孤儿 child（worker 被硬杀 → interrupted → stop 回收）
+  ✓ child 已启动
+  ✓ 状态变为 interrupted
+  ✓ 提示包含 zcode_stop
+  ✓ interrupted 时拒绝续聊
+    （worker 被杀后 child 已随 Windows job 自清）
+  ✓ stop 走孤儿回收分支
+  ✓ child 已被回收
+  ✓ 终态 stopped
+
+[11] 非法 ID / 越界路径 / 参数互斥 / 状态篡改
+  ✓ task_id 含路径分隔符被拒
+  ✓ task_id 含空格被拒
+  ✓ 非法 task_id 查询被拒
+  ✓ 相对路径 project_dir 被拒
+  ✓ 不存在的 project_dir 被拒
+  ✓ prompt 与 prompt_file 同时提供被拒
+  ✓ 两者都不提供被拒
+  ✓ prompt_file 不存在被拒
+  ✓ yolo 模式被拒
+  ✓ 相对路径 prompt_file 被拒
+  ✓ 项目外 prompt_file 被拒（零信任）
+  ✓ 篡改 run_id 后 status 标记 corrupted 或拒绝
+  ✓ 篡改后 result 拒绝
+
+[12] wait(0) 立即返回快照
+  ✓ 立即返回（<2 秒）
+  ✓ still_running=true
+
+[13] 缺 baseURL：doctor 失败、start 快速失败
+  ✓ doctor ok=false 并给出原因
+  ✓ start 快速失败且提及 baseURL
+
+[14] 续聊默认沿用上轮模型 / 显式换模型留痕
+  ✓ 首轮按 GLM-5.3 执行
+  ✓ followup 接受
+  ✓ 第二轮模型沿用 GLM-5.3
+  ✓ 显式换模型被接受
+  ✓ 换模型留痕 model_changed_from
+
+[15] 子进程环境白名单（不透传 MCP 环境变量）
+  ✓ returned
+  ✓ 子进程看不到 MCP 注入变量
+  ✓ SystemRoot 保留（node 必需）
+
+[16] 输出超上限（流式计数 → 终止 + 明确错误，不撑爆内存）
+  ✓ 终态 failed
+  ✓ exit_code=125（输出超限）
+  ✓ 错误说明明确
+  ✓ stdout.log 保留已产生部分
+  ✓ raw 临时文件已清理
+
+[17] 损坏状态不拖垮任务列表
+  ✓ 列表仍可返回
+  ✓ 坏任务显示 corrupted
+  ✓ 好任务不受影响
+
+[18] runtime 出项目（%RUNTIME_ROOT%\<project-hash>）
+  ✓ 项目内不再有 runtime 目录
+  ✓ runtime 位于项目外哈希目录
+  ✓ 命令行不含正文（instruction 只有路径）
+
+[19] worker 重入不污染终态（guard 让位/结构化失败）
+  ✓ 首轮 returned
+  ✓ 重入进程退出码 3
+  ✓ 终态未被污染（仍 returned）
+  ✓ 已完成轮次的 result 未被覆盖
+  ✓ 让位原因已记录
+
+[20] request.cli 篡改 → 拒绝执行（严格相等，不接受任意存在文件）
+  ✓ worker 退出码 3
+  ✓ 落了结构化 failed result
+  ✓ 失败原因指明 cli 不符
+
+[21] guard 遇 running+死 pid → 结构化 failed（不再无 result 退出）
+  ✓ worker 退出码 3
+  ✓ running+死pid 也落了 failed result
+
+[22] junction 穿越（.zcode-mcp 指向项目外）→ 拒绝且不写任何东西
+  ✓ start 被拒绝
+  ✓ evil 目录内未被写入任何内容
+
+[23] 项目镜像篡改不改变实际参数/任务正文
+  ✓ 实际 instruction 不含镜像注入
+  ✓ model/mode/session 使用权威值
+  ✓ 实际 cwd 使用派发项目
+  ✓ 权威数据无 API Key
+  ✓ 镜像 timeout 不改变实际超时
+  ✓ missing guard 结构化结果
+  ✓ missing 不覆盖其他 run
+  ✓ corrupt guard 结构化结果
+  ✓ corrupt 不覆盖其他 run
+  ✓ mismatch guard 结构化结果
+  ✓ mismatch 不覆盖其他 run
+
+[24] status 两层 Junction 拒绝且不泄露
+  ✓ .zcode-mcp 拒绝
+  ✓ .zcode-mcp 不泄露
+  ✓ tasks 拒绝
+  ✓ tasks 不泄露
+
+[25] audit 必填、事件、轮次和 Review 不可覆盖
+  ✓ 缺 audit 拒绝
+  ✓ task.json 自动存在
+  ✓ round-01 自动存在
+  ✓ 运行中不接受 Review
+  ✓ 未 Review 不允许续聊
+  ✓ VERIFIED 缺 evidence 拒绝
+  ✓ Review 非当前 run 拒绝
+  ✓ Review 不可覆盖
+  ✓ FALSE_POSITIVE 与 VERIFIED 分开
+  ✓ LIKELY/DESIGN 不计优先级错误数
+  ✓ P0/P1 未解决不允许 PASS
+
+[26] 修复轮次、关联问题、覆盖授权和 regression
+  ✓ 修复 2 phase 保持
+  ✓ 修复 3 phase 保持
+  ✓ 修复 4 phase 保持
+  ✓ followup round 自动递增
+  ✓ followup 关联上一轮 Review
+  ✓ 要求修复的问题关联 finding_key
+  ✓ 三次修复后阻止续聊
+  ✓ 跨轮问题去重
+  ✓ 自主修复必须后续验证
+  ✓ Regression 单独统计
+  ✓ 覆盖授权进入事件
+  ✓ 阶段切换不占修复轮次
+
+[27] finalize 证据约束、服务器统计、报告完整性
+  ✓ acceptance_met=false 拒绝 PASS
+  ✓ 统计由服务器计算
+  ✓ final 不可覆盖
+  ✓ final 后不允许续聊
+  ✓ 报告重复生成稳定
+  ✓ 证据哈希发现篡改
+  ✓ 损坏任务不拖垮统计
+  ✓ 支持月份过滤
+  ✓ PASS 无客观验证拒绝
+  ✓ 人工接手自动计数
+
+[28] 历史补录不进入表现比率、审计链接边界
+  ✓ 历史任务单列
+  ✓ 历史首次通过未知
+  ✓ 审计 task Junction 越界拒绝
+
+[29] MCP 新进程 schema 与真实 fake CLI 生命周期
+  ✓ MCP start 缺 audit 拒绝
+  ✓ MCP start 带 audit 接受
+  ✓ MCP record_review 成功
+  ✓ MCP finalize 成功
+  ✓ 审计不含 API Key
+  ✓ 报告不含 API Key
+  ✓ finalize 自动生成报告
+
+[30] v1.3.1 权威任务显式迁移
+  ✓ 已有权威任务可显式补录
+  ✓ 迁移历史不伪造首次通过
+  ✓ 迁移标记缺失历史
+
+[31] 隔离主机定位配置 + fake CLI
+  ✓ 主机根可原子写控制/审计
+  ✓ 主机根 fake CLI 返回
+  ✓ 新项目CLI runtime使用配置主机根
+  ✓ 主机根终态审计存在
+
+[32] 竞争续聊只允许一个 run
+  ✓ 竞争续聊只接受一个
+  ✓ 被接受的 run 正常返回
+
+========== 结果：160 通过 / 0 失败 ==========
